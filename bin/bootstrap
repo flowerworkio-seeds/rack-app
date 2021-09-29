@@ -1,0 +1,66 @@
+#!/usr/bin/env bash 
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+describe() {
+  echo "---> $1…"
+}
+
+squelch() {
+  $@ > /dev/null 2>&1
+}
+
+install_brew_dependencies() {
+  squelch brew bundle check || {
+    describe "Installing Homebrew dependencies"
+    brew bundle
+  }
+}
+
+configure_asdf_for_bash() {
+  squelch grep -Fq 'asdf' $HOME/.bash_profile || {
+    describe "Configuring asdf for bash"
+    echo "# Setup for asdf" >> ~/.bash_profile
+    echo ". $(brew --prefix asdf)/asdf.sh" >> ~/.bash_profile
+    echo ". $(brew --prefix asdf)/etc/bash_completion.d/asdf.bash" >> ~/.bash_profile
+    . $(brew --prefix asdf)/asdf.sh
+  }
+}
+
+add_asdf_ruby_plugin() {
+  if [ -z "$(asdf plugin-list | grep ruby || true)" ]; then
+    describe "Installing asdf ruby plugin"
+    asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
+  fi
+}
+
+asdf_install_tools() {
+  squelch asdf install
+}
+
+install_bundler_version() {
+  bundler_path=$(command -v bundler)
+  desired_version=$(grep -A 1 'BUNDLED WITH' Gemfile.lock | tail -n 1 | awk '{$1=$1};1') # Should match heroku buildpack version
+  if [ -z "$bundler_path" ] || [ "$(bundler --version | sed 's/^Bundler version \(.*\)$/\1/')" != "$desired_version" ]; then
+    describe "Installing bundler version from Gemfile.lock"
+    gem install bundler -v ${desired_version}
+  fi
+}
+
+install_gems() {
+  squelch bundle check || {
+    describe "Installing gem dependencies"
+    ./bin/bundle install
+  }
+}
+
+
+install_brew_dependencies
+configure_asdf_for_bash
+add_asdf_ruby_plugin
+asdf_install_tools
+install_bundler_version
+install_gems
+describe "done"
